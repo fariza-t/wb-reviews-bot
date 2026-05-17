@@ -188,25 +188,22 @@ async def process_new_reviews():
         }
 
         if rating == 5:
-            reply = get_next_template(data, product)
-            if not reply:
-                # Шаблоны не настроены — генерируем через Claude
-                try:
-                    reply = await generate_reply(text, rating, article, product)
-                except Exception as e:
-                    log.error(f"Ошибка Claude для {fid}: {e}")
-                    reply = ""
+            try:
+                reply = await generate_reply(text, rating, article, product)
+            except Exception as e:
+                log.error(f"Ошибка Claude для {fid}: {e}")
+                reply = ""
 
             if reply:
                 ok = await wb_post_answer(fid, reply)
                 if ok:
-                    log.info(f"✅ Авто-ответ на 5⭐ {fid}")
+                    log.info(f"✅ Авто-ответ (Claude) на 5⭐ {fid}")
                     data["published"].append({**review_obj, "reply": reply, "mode": "auto"})
                 else:
                     log.warning(f"⚠️ WB не принял ответ {fid} — в pending")
                     data["pending"].append({**review_obj, "draft": reply})
             else:
-                log.warning(f"⚠️ Нет шаблонов и Claude недоступен для {fid} — в pending")
+                log.warning(f"⚠️ Claude недоступен для {fid} — в pending")
                 data["pending"].append({**review_obj, "draft": ""})
         else:
             try:
