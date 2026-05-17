@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WB Reviews Bot</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg: #0a0f1e;
+    --surface: #111827;
+    --surface2: #1a2438;
+    --border: #1e293b;
+    --border2: #2d3f55;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #7c3aed;
+    --accent2: #a855f7;
+    --green: #22c55e;
+    --green-bg: #052e16;
+    --green-border: #166534;
+    --red: #f87171;
+    --red-bg: #1c0a09;
+    --yellow: #fbbf24;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Golos Text', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Header */
+  .header { background: #0d1321; border-bottom: 1px solid var(--border); padding: 0 24px; height: 58px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 50; }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .logo-name { font-size: 16px; font-weight: 700; }
+  .spacer { flex: 1; }
+  .next-check { font-size: 12px; color: var(--muted); }
+
+  /* Tabs */
+  .tabs-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border); padding: 0 24px; background: var(--surface); }
+  .tab-btn { padding: 14px 20px; font-size: 14px; font-weight: 500; font-family: inherit; background: none; border: none; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.15s; display: flex; align-items: center; gap: 8px; }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+  .badge { background: var(--accent); color: white; font-size: 11px; font-weight: 700; border-radius: 999px; min-width: 20px; height: 20px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; }
+  .badge-green { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+
+  /* Stats bar */
+  .stats-bar { display: flex; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 18px; display: flex; flex-direction: column; gap: 2px; min-width: 120px; }
+  .stat-value { font-size: 24px; font-weight: 700; }
+  .stat-label { font-size: 12px; color: var(--muted); }
+
+  /* Main */
+  .main { padding: 16px 24px; max-width: 860px; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .section-title { font-size: 15px; font-weight: 600; }
+
+  /* Cards */
+  .cards { display: flex; flex-direction: column; gap: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px 20px; transition: border-color 0.2s; }
+  .card:hover { border-color: var(--border2); }
+  .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .card-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .stars { display: flex; gap: 2px; }
+  .star { font-size: 15px; }
+  .meta-date { font-size: 12px; color: var(--muted); }
+  .meta-product { font-size: 12px; color: var(--muted); background: #0f172a; padding: 2px 8px; border-radius: 6px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .review-text { font-size: 14px; line-height: 1.6; color: #cbd5e1; margin-bottom: 14px; }
+  .review-text em { color: var(--muted); }
+
+  /* Draft */
+  .draft-label { font-size: 12px; font-weight: 600; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 7px; display: flex; align-items: center; gap: 6px; }
+  textarea { width: 100%; background: #0f172a; border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; color: var(--text); font-size: 14px; font-family: inherit; line-height: 1.5; outline: none; resize: vertical; transition: border 0.2s; }
+  textarea:focus { border-color: var(--accent); }
+  .char-row { display: flex; justify-content: flex-end; margin-top: 4px; }
+  .char-count { font-size: 11px; color: var(--muted); }
+  .char-count.over { color: var(--red); }
+  .card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 9px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; border: none; transition: all 0.15s; white-space: nowrap; }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; }
+  .btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+  .btn-green { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+  .btn-green:hover:not(:disabled) { background: #053d1a; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: #a78bfa; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 7px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Published badge */
+  .pub-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--green); background: var(--green-bg); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--green-border); }
+  .auto-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #fcd34d; background: #1c1205; padding: 2px 8px; border-radius: 999px; border: 1px solid #78350f; }
+  .manual-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #93c5fd; background: #0c1a2e; padding: 2px 8px; border-radius: 999px; border: 1px solid #1e3a5f; }
+
+  /* Published reply */
+  .pub-reply { background: #0f172a; border: 1px solid var(--border); border-radius: 9px; padding: 10px 13px; font-size: 14px; color: #94a3b8; line-height: 1.5; margin-top: 10px; }
+
+  /* Empty */
+  .empty { text-align: center; padding: 60px 24px; color: var(--muted); }
+  .empty-icon { font-size: 44px; margin-bottom: 12px; }
+  .empty-text { font-size: 16px; font-weight: 500; color: #475569; margin-bottom: 6px; }
+
+  /* Templates editor */
+  .templates-section { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
+  .templates-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .templates-desc { font-size: 13px; color: var(--muted); margin-bottom: 18px; line-height: 1.5; }
+  .template-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: flex-start; }
+  .template-row textarea { min-height: 58px; }
+  .add-template { border: 1px dashed var(--border2); background: transparent; color: var(--muted); border-radius: 10px; padding: 10px; width: 100%; font-family: inherit; font-size: 13px; cursor: pointer; transition: all 0.15s; margin-top: 4px; }
+  .add-template:hover { border-color: var(--accent); color: #a78bfa; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 18px; border-radius: 12px; font-size: 14px; font-weight: 500; z-index: 200; animation: slideUp 0.2s ease; display: flex; align-items: center; gap: 8px; }
+  .toast-success { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+  .toast-error { background: var(--red-bg); color: var(--red); border: 1px solid #7f1d1d; }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Spinner */
+  .spin { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.2); border-top-color: currentColor; border-radius: 50%; animation: spinner 0.6s linear infinite; display: inline-block; }
+  @keyframes spinner { to { transform: rotate(360deg); } }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .main { padding: 12px 14px; }
+    .header { padding: 0 14px; }
+    .stats-bar { padding: 12px 14px; }
+    .tabs-bar { padding: 0 14px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">💬</div>
+    <span class="logo-name">WB Reviews Bot</span>
+  </div>
+  <div class="spacer"></div>
+  <span class="next-check" id="next-check"></span>
+  <button class="btn btn-ghost btn-sm" onclick="checkNow()">↺ Проверить сейчас</button>
+</div>
+
+<div class="tabs-bar">
+  <button class="tab-btn active" onclick="switchTab('pending')" id="tab-pending">
+    Ожидают ответа <span class="badge" id="badge-pending">0</span>
+  </button>
+  <button class="tab-btn" onclick="switchTab('published')" id="tab-published">
+    Опубликовано <span class="badge badge-green" id="badge-published">0</span>
+  </button>
+  <button class="tab-btn" onclick="switchTab('templates')" id="tab-templates">
+    Шаблоны ⭐⭐⭐⭐⭐
+  </button>
+</div>
+
+<div id="stats-bar" class="stats-bar"></div>
+<div class="main" id="main-content"></div>
+
+<div id="toast" class="toast" style="display:none"></div>
+
+<script>
+let currentTab = 'pending';
+let pendingData = [];
+let publishedData = [];
+let templates = [];
+let draftEdits = {};
+let photoFlags = {};
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+  await Promise.all([loadPending(), loadPublished(), loadStats(), loadTemplates()]);
+  render();
+}
+
+// ── Data loaders ──────────────────────────────────────────────────────────
+async function loadPending() {
+  const r = await fetch('/api/pending');
+  pendingData = await r.json();
+}
+
+async function loadPublished() {
+  const r = await fetch('/api/published');
+  publishedData = await r.json();
+}
+
+async function loadStats() {
+  const r = await fetch('/api/stats');
+  const s = await r.json();
+  document.getElementById('badge-pending').textContent = s.pending;
+  document.getElementById('badge-published').textContent = s.published;
+  document.getElementById('next-check').textContent = s.next_check !== '—' ? `Следующая проверка: ${s.next_check.slice(11,16)}` : '';
+
+  document.getElementById('stats-bar').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-value" style="color:#a78bfa">${s.pending}</div>
+      <div class="stat-label">Ждут ответа</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#4ade80">${s.published}</div>
+      <div class="stat-label">Опубликовано</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#fcd34d">${s.auto}</div>
+      <div class="stat-label">Авто (5⭐)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="color:#93c5fd">${s.manual}</div>
+      <div class="stat-label">Вручную</div>
+    </div>
+  `;
+}
+
+async function loadTemplates() {
+  const r = await fetch('/api/templates');
+  const d = await r.json();
+  templates = d.templates;
+}
+
+// ── Tab switch ────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab)?.classList.add('active');
+  render();
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+function render() {
+  if (currentTab === 'pending') renderPending();
+  else if (currentTab === 'published') renderPublished();
+  else renderTemplates();
+}
+
+function starsHTML(rating) {
+  const colors = ['#ef4444','#f97316','#eab308','#84cc16','#22c55e'];
+  return [1,2,3,4,5].map(s =>
+    `<span class="star" style="color:${s<=rating ? colors[rating-1] : '#334155'}">★</span>`
+  ).join('');
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  return new Date(d).toLocaleDateString('ru-RU', {day:'2-digit', month:'short', year:'numeric'});
+}
+
+function renderPending() {
+  const el = document.getElementById('main-content');
+  if (!pendingData.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🎉</div><div class="empty-text">Все отзывы обработаны!</div><div style="font-size:13px;color:#475569;margin-top:6px">Новые появятся после следующей проверки</div></div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Отзывы 1–4 ⭐ — требуют проверки</div>
+    </div>
+    <div class="cards">
+      ${pendingData.map(r => cardHTML(r)).join('')}
+    </div>
+  `;
+}
+
+function cardHTML(r) {
+  const draft = draftEdits[r.id] !== undefined ? draftEdits[r.id] : (r.draft || '');
+  const charCls = draft.length > 500 ? 'over' : '';
+  const noText = !r.text;
+  const hasPhoto = photoFlags[r.id] || false;
+  const showPhotoCheck = r.rating >= 4;
+  return `
+    <div class="card" id="card-${r.id}">
+      <div class="card-top">
+        <div>
+          <div class="card-meta">
+            <div class="stars">${starsHTML(r.rating)}</div>
+            <span class="meta-date">${fmtDate(r.created)}</span>
+          </div>
+          ${r.product ? `<div style="margin-top:5px"><span class="meta-product" title="${esc(r.product)}">📦 ${esc(r.product)}</span></div>` : ''}
+        </div>
+      </div>
+      <div class="review-text">${noText ? '<em>Текст отзыва отсутствует</em>' : '«' + esc(r.text) + '»'}</div>
+      ${showPhotoCheck ? `
+      <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:${hasPhoto ? '#fcd34d' : '#475569'};background:${hasPhoto ? '#1c1205' : 'transparent'};border:1px solid ${hasPhoto ? '#713f12' : '#1e293b'};padding:5px 12px;border-radius:8px;margin-bottom:12px;transition:all .15s;user-select:none;">
+        <input type="checkbox" ${hasPhoto ? 'checked' : ''} onchange="togglePhoto('${r.id}', this.checked)" style="accent-color:#f59e0b;width:15px;height:15px;cursor:pointer;">
+        📷 В отзыве есть фото
+      </label>` : ''}
+      <div>
+        <div class="draft-label">✦ Черновик ответа Claude</div>
+        ${draft
+          ? `<textarea id="ta-${r.id}" onInput="editDraft('${r.id}', this.value)">${esc(draft)}</textarea>
+             <div class="char-row"><span class="char-count ${charCls}" id="cc-${r.id}">${draft.length} / 500</span></div>
+             <div class="card-actions">
+               <button class="btn btn-green" onclick="publishAnswer('${r.id}')">✓ Опубликовать</button>
+               <button class="btn btn-ghost btn-sm" onclick="regenerate('${r.id}')">↺ Перегенерировать</button>
+             </div>`
+          : `<div class="card-actions">
+               <button class="btn btn-ghost btn-sm" style="border-color:#7c3aed;color:#a78bfa" onclick="regenerate('${r.id}')"><span class="spin"></span> Генерирую черновик...</button>
+             </div>`
+        }
+      </div>
+    </div>`;
+}
+
+function renderPublished() {
+  const el = document.getElementById('main-content');
+  const sorted = [...publishedData].reverse();
+  if (!sorted.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">💬</div><div class="empty-text">Опубликованных ответов пока нет</div></div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">История ответов (последние 50)</div>
+    </div>
+    <div class="cards">
+      ${sorted.map(r => `
+        <div class="card">
+          <div class="card-top">
+            <div>
+              <div class="card-meta">
+                <div class="stars">${starsHTML(r.rating)}</div>
+                <span class="meta-date">${fmtDate(r.created)}</span>
+                ${r.mode==='auto' ? '<span class="auto-badge">⚡ Авто</span>' : '<span class="manual-badge">✋ Вручную</span>'}
+              </div>
+              ${r.product ? `<div style="margin-top:4px"><span class="meta-product">📦 ${esc(r.product)}</span></div>` : ''}
+            </div>
+            <span class="pub-badge">✓ Опубликован</span>
+          </div>
+          <div class="review-text">${r.text ? '«'+esc(r.text)+'»' : '<em>Без текста</em>'}</div>
+          <div class="draft-label">Ответ:</div>
+          <div class="pub-reply">${esc(r.reply)}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderTemplates() {
+  const el = document.getElementById('main-content');
+  el.innerHTML = `
+    <div class="templates-section">
+      <div class="templates-title">Шаблоны для 5-звёздных отзывов</div>
+      <div class="templates-desc">
+        Шаблоны чередуются по ротации, чтобы ответы не выглядели одинаково.<br>
+        Используй <code style="background:#0f172a;padding:2px 6px;border-radius:4px;font-size:12px">{product}</code> для подстановки названия товара (если нужно).
+      </div>
+      <div id="template-list">
+        ${templates.map((t,i) => `
+          <div class="template-row" id="trow-${i}">
+            <textarea id="tpl-${i}" rows="2">${esc(t)}</textarea>
+            <button class="btn btn-ghost btn-sm" onclick="removeTemplate(${i})" title="Удалить">✕</button>
+          </div>
+        `).join('')}
+      </div>
+      <button class="add-template" onclick="addTemplate()">+ Добавить шаблон</button>
+      <div style="margin-top:16px">
+        <button class="btn btn-primary" onclick="saveTemplates()">💾 Сохранить шаблоны</button>
+      </div>
+    </div>
+  `;
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────
+function editDraft(id, val) {
+  draftEdits[id] = val;
+  const cc = document.getElementById('cc-' + id);
+  if (cc) {
+    cc.textContent = val.length + ' / 280';
+    cc.className = 'char-count ' + (val.length > 280 ? 'over' : '');
+  }
+}
+
+async function publishAnswer(id) {
+  const ta = document.getElementById('ta-' + id);
+  const text = ta ? ta.value.trim() : (draftEdits[id] || '');
+  if (!text) return;
+  const btn = event.target;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Публикую...';
+  try {
+    const r = await fetch('/api/publish', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({review_id: id, text})
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Ошибка');
+    toast('Ответ опубликован на Wildberries ✓', 'success');
+    await Promise.all([loadPending(), loadPublished(), loadStats()]);
+    render();
+  } catch(e) {
+    toast('Ошибка: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = '✓ Опубликовать';
+  }
+}
+
+function togglePhoto(id, checked) {
+  photoFlags[id] = checked;
+  render(); // перерендерить чтобы обновить стиль чекбокса
+}
+
+async function regenerate(id) {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Генерирую...';
+  try {
+    const r = await fetch('/api/regenerate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({review_id: id, has_photo: photoFlags[id] || false})
+    });
+    if (!r.ok) throw new Error('Ошибка API');
+    const d = await r.json();
+    draftEdits[id] = d.draft;
+    await loadPending();
+    render();
+  } catch(e) {
+    toast('Ошибка генерации', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '↺ Перегенерировать';
+  }
+}
+
+async function checkNow() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Проверяю...';
+  try {
+    await fetch('/api/check-now', {method:'POST'});
+    toast('Проверка запущена', 'success');
+    setTimeout(async () => {
+      await init();
+      btn.disabled = false;
+      btn.innerHTML = '↺ Проверить сейчас';
+    }, 4000);
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '↺ Проверить сейчас';
+  }
+}
+
+function addTemplate() {
+  templates.push('');
+  renderTemplates();
+}
+
+function removeTemplate(i) {
+  templates.splice(i, 1);
+  renderTemplates();
+}
+
+async function saveTemplates() {
+  const inputs = document.querySelectorAll('[id^="tpl-"]');
+  const newTpls = [...inputs].map(t => t.value.trim()).filter(Boolean);
+  if (!newTpls.length) { toast('Добавьте хотя бы один шаблон', 'error'); return; }
+  try {
+    await fetch('/api/templates', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({templates: newTpls})
+    });
+    templates = newTpls;
+    toast('Шаблоны сохранены ✓', 'success');
+  } catch(e) {
+    toast('Ошибка сохранения', 'error');
+  }
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let toastTimer;
+function toast(msg, type='success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast toast-${type}`;
+  el.style.display = 'flex';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.style.display = 'none', 3000);
+}
+
+// Автообновление каждые 5 минут
+setInterval(async () => { await Promise.all([loadPending(), loadPublished(), loadStats()]); render(); }, 300000);
+
+init();
+</script>
+</body>
+</html>
