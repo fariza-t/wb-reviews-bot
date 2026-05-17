@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  wb-reviews:
+    build: .
+    container_name: wb-reviews-bot
+    restart: unless-stopped
+    ports:
+      - "8000:8000"          # Поменяй на нужный порт, если надо
+    environment:
+      WB_API_KEY: "${WB_API_KEY}"
+      ANTHROPIC_KEY: "${ANTHROPIC_KEY}"
+      CHECK_INTERVAL_MINUTES: "${CHECK_INTERVAL_MINUTES:-30}"
+    volumes:
+      - wb_data:/data         # Сюда сохраняется reviews.json между перезапусками
+
+volumes:
+  wb_data:
