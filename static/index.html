@@ -187,7 +187,9 @@ async function loadStats() {
   const s = await r.json();
   document.getElementById('badge-pending').textContent = s.pending;
   document.getElementById('badge-published').textContent = s.published;
-  document.getElementById('next-check').textContent = s.next_check !== '—' ? `Следующая проверка: ${s.next_check.slice(11,16)}` : '';
+  document.getElementById('next-check').textContent = s.next_check
+    ? `Следующая проверка: ${fmtTime(s.next_check)}`
+    : '';
 
   document.getElementById('stats-bar').innerHTML = `
     <div class="stat-card">
@@ -210,9 +212,15 @@ async function loadStats() {
 }
 
 async function loadTemplates() {
-  const r = await fetch('/api/templates');
-  const d = await r.json();
-  templates = d.templates;
+  try {
+    const r = await fetch('/api/templates');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    templates = d.templates || [];
+  } catch (e) {
+    console.error('Ошибка загрузки шаблонов:', e);
+    templates = [];
+  }
 }
 
 // ── Tab switch ────────────────────────────────────────────────────────────
@@ -242,6 +250,15 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('ru-RU', {day:'2-digit', month:'short', year:'numeric'});
 }
 
+function fmtTime(isoStr) {
+  if (!isoStr) return '';
+  try {
+    return new Date(isoStr).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
+  } catch {
+    return '';
+  }
+}
+
 function renderPending() {
   const el = document.getElementById('main-content');
   if (!pendingData.length) {
@@ -250,7 +267,7 @@ function renderPending() {
   }
   el.innerHTML = `
     <div class="section-header">
-      <div class="section-title">Отзывы 1–4 ⭐ — требуют проверки</div>
+      <div class="section-title">Отзывы, требующие проверки</div>
     </div>
     <div class="cards">
       ${pendingData.map(r => cardHTML(r)).join('')}
@@ -260,7 +277,8 @@ function renderPending() {
 
 function cardHTML(r) {
   const draft = draftEdits[r.id] !== undefined ? draftEdits[r.id] : (r.draft || '');
-  const charCls = draft.length > 500 ? 'over' : '';
+  const charLen = draft.length;
+  const charCls = charLen > 500 ? 'over' : '';
   const noText = !r.text;
   const hasPhoto = photoFlags[r.id] || false;
   const showPhotoCheck = r.rating >= 4;
@@ -277,7 +295,7 @@ function cardHTML(r) {
       </div>
       <div class="review-text">${noText ? '<em>Текст отзыва отсутствует</em>' : '«' + esc(r.text) + '»'}</div>
       ${showPhotoCheck ? `
-      <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:${hasPhoto ? '#fcd34d' : '#475569'};background:${hasPhoto ? '#1c1205' : 'transparent'};border:1px solid ${hasPhoto ? '#713f12' : '#1e293b'};padding:5px 12px;border-radius:8px;margin-bottom:12px;transition:all .15s;user-select:none;">
+      <label id="photo-label-${r.id}" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:${hasPhoto ? '#fcd34d' : '#475569'};background:${hasPhoto ? '#1c1205' : 'transparent'};border:1px solid ${hasPhoto ? '#713f12' : '#1e293b'};padding:5px 12px;border-radius:8px;margin-bottom:12px;transition:all .15s;user-select:none;">
         <input type="checkbox" ${hasPhoto ? 'checked' : ''} onchange="togglePhoto('${r.id}', this.checked)" style="accent-color:#f59e0b;width:15px;height:15px;cursor:pointer;">
         📷 В отзыве есть фото
       </label>` : ''}
@@ -285,7 +303,7 @@ function cardHTML(r) {
         <div class="draft-label">✦ Черновик ответа Claude</div>
         ${draft
           ? `<textarea id="ta-${r.id}" onInput="editDraft('${r.id}', this.value)">${esc(draft)}</textarea>
-             <div class="char-row"><span class="char-count ${charCls}" id="cc-${r.id}">${draft.length} / 500</span></div>
+             <div class="char-row"><span class="char-count ${charCls}" id="cc-${r.id}">${charLen} / 500</span></div>
              <div class="card-actions">
                <button class="btn btn-green" onclick="publishAnswer('${r.id}')">✓ Опубликовать</button>
                <button class="btn btn-ghost btn-sm" onclick="regenerate('${r.id}')">↺ Перегенерировать</button>
@@ -339,7 +357,8 @@ function renderTemplates() {
       <div class="templates-title">Шаблоны для 5-звёздных отзывов</div>
       <div class="templates-desc">
         Шаблоны чередуются по ротации, чтобы ответы не выглядели одинаково.<br>
-        Используй <code style="background:#0f172a;padding:2px 6px;border-radius:4px;font-size:12px">{product}</code> для подстановки названия товара (если нужно).
+        Используй <code style="background:#0f172a;padding:2px 6px;border-radius:4px;font-size:12px">{product}</code> для подстановки названия товара (если нужно).<br>
+        <span style="color:#64748b">Если шаблоны не заданы — ответы для 5⭐ генерирует Claude.</span>
       </div>
       <div id="template-list">
         ${templates.map((t,i) => `
@@ -362,8 +381,8 @@ function editDraft(id, val) {
   draftEdits[id] = val;
   const cc = document.getElementById('cc-' + id);
   if (cc) {
-    cc.textContent = val.length + ' / 280';
-    cc.className = 'char-count ' + (val.length > 280 ? 'over' : '');
+    cc.textContent = val.length + ' / 500';
+    cc.className = 'char-count ' + (val.length > 500 ? 'over' : '');
   }
 }
 
@@ -371,6 +390,10 @@ async function publishAnswer(id) {
   const ta = document.getElementById('ta-' + id);
   const text = ta ? ta.value.trim() : (draftEdits[id] || '');
   if (!text) return;
+  if (text.length > 500) {
+    toast(`Текст слишком длинный: ${text.length} / 500 символов`, 'error');
+    return;
+  }
   const btn = event.target;
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Публикую...';
@@ -380,7 +403,10 @@ async function publishAnswer(id) {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({review_id: id, text})
     });
-    if (!r.ok) throw new Error((await r.json()).detail || 'Ошибка');
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || 'Ошибка сервера');
+    }
     toast('Ответ опубликован на Wildberries ✓', 'success');
     await Promise.all([loadPending(), loadPublished(), loadStats()]);
     render();
@@ -393,7 +419,13 @@ async function publishAnswer(id) {
 
 function togglePhoto(id, checked) {
   photoFlags[id] = checked;
-  render(); // перерендерить чтобы обновить стиль чекбокса
+  // Обновляем стиль метки без полного ре-рендера (чтобы не потерять фокус в textarea)
+  const label = document.getElementById('photo-label-' + id);
+  if (label) {
+    label.style.color = checked ? '#fcd34d' : '#475569';
+    label.style.background = checked ? '#1c1205' : 'transparent';
+    label.style.border = `1px solid ${checked ? '#713f12' : '#1e293b'}`;
+  }
 }
 
 async function regenerate(id) {
@@ -406,13 +438,16 @@ async function regenerate(id) {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({review_id: id, has_photo: photoFlags[id] || false})
     });
-    if (!r.ok) throw new Error('Ошибка API');
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || 'Ошибка API');
+    }
     const d = await r.json();
     draftEdits[id] = d.draft;
     await loadPending();
     render();
   } catch(e) {
-    toast('Ошибка генерации', 'error');
+    toast('Ошибка генерации: ' + e.message, 'error');
     btn.disabled = false;
     btn.innerHTML = '↺ Перегенерировать';
   }
@@ -451,15 +486,19 @@ async function saveTemplates() {
   const newTpls = [...inputs].map(t => t.value.trim()).filter(Boolean);
   if (!newTpls.length) { toast('Добавьте хотя бы один шаблон', 'error'); return; }
   try {
-    await fetch('/api/templates', {
+    const r = await fetch('/api/templates', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({templates: newTpls})
     });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || 'Ошибка сервера');
+    }
     templates = newTpls;
     toast('Шаблоны сохранены ✓', 'success');
   } catch(e) {
-    toast('Ошибка сохранения', 'error');
+    toast('Ошибка сохранения: ' + e.message, 'error');
   }
 }
 
@@ -475,7 +514,7 @@ function toast(msg, type='success') {
   el.className = `toast toast-${type}`;
   el.style.display = 'flex';
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.style.display = 'none', 3000);
+  toastTimer = setTimeout(() => el.style.display = 'none', 3500);
 }
 
 // Автообновление каждые 5 минут
