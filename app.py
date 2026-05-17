@@ -27,7 +27,10 @@ CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL_MINUTES", "30"))
 DATA_FILE = Path("/data/reviews.json")
 DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
 if not DATA_FILE.exists():
-    DATA_FILE.write_text(json.dumps({"processed": [], "pending": [], "published": []}))
+    DATA_FILE.write_text(json.dumps({
+        "processed": [], "pending": [], "published": [],
+        "templates": [], "template_index": 0,
+    }))
 
 CARDAMON_HITS = [
     {"art": "943473684", "name": "костюмчики"},
@@ -87,15 +90,28 @@ def build_claude_prompt(review_text: str, rating: int, article: str, product_nam
 
 def load_data() -> dict:
     try:
-        return json.loads(DATA_FILE.read_text())
+        d = json.loads(DATA_FILE.read_text())
+        d.setdefault("templates", [])
+        d.setdefault("template_index", 0)
+        return d
     except Exception:
-        return {"processed": [], "pending": [], "published": []}
+        return {"processed": [], "pending": [], "published": [], "templates": [], "template_index": 0}
 
 def save_data(data: dict):
     DATA_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 
 def wb_headers():
     return {"Authorization": WB_API_KEY, "Content-Type": "application/json"}
+
+def get_next_template(data: dict, product_name: str) -> str:
+    """Возвращает следующий шаблон по ротации с подстановкой {product}."""
+    templates = data.get("templates", [])
+    if not templates:
+        return ""
+    idx = data.get("template_index", 0) % len(templates)
+    text = templates[idx]
+    data["template_index"] = (idx + 1) % len(templates)
+    return text.replace("{product}", product_name or "")
 
 async def wb_get_unanswered() -> list[dict]:
     url = "https://feedbacks-api.wildberries.ru/api/v1/feedbacks"
@@ -171,29 +187,35 @@ async def process_new_reviews():
             "processed_at": datetime.now().isoformat(),
         }
 
-        try:
-            draft = await generate_reply(text, rating, article, product)
-        except Exception as e:
-            log.error(f"Ошибка Claude для {fid}: {e}")
-            draft = ""
-
         if rating == 5:
-            if draft:
-                ok = await wb_post_answer(fid, draft)
+            try:
+                reply = await generate_reply(text, rating, article, product)
+            except Exception as e:
+                log.error(f"Ошибка Claude для {fid}: {e}")
+                reply = ""
+
+            if reply:
+                ok = await wb_post_answer(fid, reply)
                 if ok:
-                    log.info(f"✅ Авто-ответ на 5⭐ {fid}")
-                    data["published"].append({**review_obj, "reply": draft, "mode": "auto"})
+                    log.info(f"✅ Авто-ответ (Claude) на 5⭐ {fid}")
+                    data["published"].append({**review_obj, "reply": reply, "mode": "auto"})
                 else:
                     log.warning(f"⚠️ WB не принял ответ {fid} — в pending")
-                    data["pending"].append({**review_obj, "draft": draft})
+                    data["pending"].append({**review_obj, "draft": reply})
             else:
+                log.warning(f"⚠️ Claude недоступен для {fid} — в pending")
                 data["pending"].append({**review_obj, "draft": ""})
         else:
+            try:
+                draft = await generate_reply(text, rating, article, product)
+            except Exception as e:
+                log.error(f"Ошибка Claude для {fid}: {e}")
+                draft = ""
             data["pending"].append({**review_obj, "draft": draft})
             log.info(f"📝 Черновик {rating}⭐ {fid}")
 
         data["processed"].append(fid)
-        save_data(data)  # сохраняем после каждого
+        save_data(data)
 
     log.info(f"✅ Готово. Обработано новых: {len(new_reviews)}")
 
@@ -228,13 +250,32 @@ async def get_published():
 async def get_stats():
     data = load_data()
     pub = data["published"]
+    job = scheduler.get_job("check_reviews")
     return {
         "pending": len(data["pending"]),
         "published": len(pub),
         "auto": sum(1 for p in pub if p.get("mode") == "auto"),
         "manual": sum(1 for p in pub if p.get("mode") == "manual"),
-        "next_check": str(scheduler.get_job("check_reviews").next_run_time) if scheduler.get_job("check_reviews") else "—",
+        "next_check": job.next_run_time.isoformat() if job and job.next_run_time else None,
     }
+
+@app.get("/api/templates")
+async def get_templates():
+    data = load_data()
+    return {"templates": data.get("templates", [])}
+
+class TemplatesPayload(BaseModel):
+    templates: list[str]
+
+@app.post("/api/templates")
+async def save_templates_endpoint(payload: TemplatesPayload):
+    cleaned = [t.strip() for t in payload.templates if t.strip()]
+    if not cleaned:
+        raise HTTPException(400, "Список шаблонов не может быть пустым")
+    data = load_data()
+    data["templates"] = cleaned
+    save_data(data)
+    return {"ok": True, "count": len(cleaned)}
 
 class PublishPayload(BaseModel):
     review_id: str
@@ -242,6 +283,8 @@ class PublishPayload(BaseModel):
 
 @app.post("/api/publish")
 async def publish_answer(payload: PublishPayload):
+    if len(payload.text) > 500:
+        raise HTTPException(400, f"Текст превышает 500 символов ({len(payload.text)})")
     data = load_data()
     review = next((r for r in data["pending"] if r["id"] == payload.review_id), None)
     if not review:
@@ -264,7 +307,10 @@ async def regenerate(payload: RegeneratePayload):
     review = next((r for r in data["pending"] if r["id"] == payload.review_id), None)
     if not review:
         raise HTTPException(404, "Отзыв не найден")
-    draft = await generate_reply(review["text"], review["rating"], review.get("article", ""), review.get("product", ""), payload.has_photo)
+    try:
+        draft = await generate_reply(review["text"], review["rating"], review.get("article", ""), review.get("product", ""), payload.has_photo)
+    except Exception as e:
+        raise HTTPException(502, f"Ошибка Claude API: {e}")
     for r in data["pending"]:
         if r["id"] == payload.review_id:
             r["draft"] = draft
