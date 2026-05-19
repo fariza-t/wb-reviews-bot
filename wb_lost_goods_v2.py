@@ -130,10 +130,19 @@ def safe_post(url: str, api_key: str, body: dict, label: str) -> list:
             # Некоторые эндпоинты WB возвращают {"data": [...]} вместо плоского списка
             if isinstance(resp, dict):
                 for key in ("data", "result", "items", "list", "response"):
-                    if key in resp and isinstance(resp[key], list):
-                        return resp[key] or []
-                # Не нашли список — печатаем ключи для диагностики
-                print(f"   ℹ️  Неизвестная структура ответа ({label}): {list(resp.keys())}")
+                    val = resp.get(key)
+                    if isinstance(val, list):
+                        return val or []
+                    # Один уровень вложенности: {"data": {"stocks": [...]}}
+                    if isinstance(val, dict):
+                        for inner in ("stocks", "items", "list", "data", "result"):
+                            inner_val = val.get(inner)
+                            if isinstance(inner_val, list):
+                                return inner_val or []
+                # Не нашли список — печатаем структуру для диагностики
+                import json as _json
+                print(f"   ℹ️  Неизвестная структура ответа ({label}): "
+                      f"{_json.dumps(resp, ensure_ascii=False)[:500]}")
                 return []
             return resp or []
         if r.status_code == 401:
@@ -155,16 +164,47 @@ def safe_post(url: str, api_key: str, body: dict, label: str) -> list:
 
 def fetch_incomes(api_key: str) -> pd.DataFrame:
     """
-    /api/v1/supplier/incomes
+    Поставки — пробуем несколько известных URL (WB менял домены в 2024-2025).
     Принимаем только status == "Принято" (регистр нечувствительно).
     Пагинация: lastChangeDate последней строки как следующий dateFrom.
     """
-    url = f"{STATS_BASE}/api/v1/supplier/incomes"
+    candidate_urls = [
+        f"{STATS_BASE}/api/v1/supplier/incomes",
+        "https://marketplace-api.wildberries.ru/api/v1/supplier/incomes",
+        "https://suppliers-api.wildberries.ru/api/v1/supplier/incomes",
+    ]
+
+    # Находим рабочий URL
+    url = None
+    for candidate in candidate_urls:
+        r = safe_get(candidate, api_key, {"dateFrom": DATE_FROM}, "Поставки-проверка")
+        if r is not None and r != []:
+            url = candidate
+            print(f"   ✅ Рабочий URL поставок: {candidate}")
+            break
+        # safe_get вернул [] — может быть пустой ответ (ОК) или 404
+        # Проверяем напрямую чтобы отличить пустой список от ошибки
+        import requests as _req
+        try:
+            probe = _req.get(candidate, headers=auth_headers(api_key),
+                             params={"dateFrom": DATE_FROM}, timeout=30)
+            if probe.status_code == 200:
+                url = candidate
+                print(f"   ✅ Рабочий URL поставок: {candidate}")
+                break
+            print(f"   ✗ {candidate} → HTTP {probe.status_code}")
+        except Exception:
+            print(f"   ✗ {candidate} → недоступен")
+
+    if not url:
+        print("   ❌ Ни один URL поставок не работает — колонка 'Отгружено' будет пустой.")
+        return pd.DataFrame(columns=["nmId", "отгружено", "арт_продавца", "тех_размер"])
+
     all_rows = []
     date_cursor = DATE_FROM
     page = 0
 
-    print("\n📦 Поставки — /api/v1/supplier/incomes")
+    print("\n📦 Поставки — загружаем данные")
 
     while True:
         page += 1
