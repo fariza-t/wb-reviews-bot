@@ -126,7 +126,16 @@ def safe_post(url: str, api_key: str, body: dict, label: str) -> list:
             continue
 
         if r.status_code == 200:
-            return r.json() or []
+            resp = r.json()
+            # Некоторые эндпоинты WB возвращают {"data": [...]} вместо плоского списка
+            if isinstance(resp, dict):
+                for key in ("data", "result", "items", "list", "response"):
+                    if key in resp and isinstance(resp[key], list):
+                        return resp[key] or []
+                # Не нашли список — печатаем ключи для диагностики
+                print(f"   ℹ️  Неизвестная структура ответа ({label}): {list(resp.keys())}")
+                return []
+            return resp or []
         if r.status_code == 401:
             sys.exit(
                 f"\n❌ HTTP 401 ({label})\n"
