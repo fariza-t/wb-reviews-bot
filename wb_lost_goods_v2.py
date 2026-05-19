@@ -62,6 +62,7 @@ from openpyxl.utils import get_column_letter
 from datetime import datetime, timedelta
 import time
 import sys
+import argparse
 
 # ─────────────────────────────────────────────────────────────
 # НАСТРОЙКИ — заполни перед запуском
@@ -171,7 +172,9 @@ def fetch_incomes(api_key: str) -> pd.DataFrame:
     candidate_urls = [
         f"{STATS_BASE}/api/v1/supplier/incomes",
         "https://marketplace-api.wildberries.ru/api/v1/supplier/incomes",
-        "https://suppliers-api.wildberries.ru/api/v1/supplier/incomes",
+        "https://marketplace-api.wildberries.ru/api/v2/supplier/incomes",
+        f"{ANALYTICS_BASE}/api/analytics/v1/incomes",
+        f"{ANALYTICS_BASE}/api/v1/supplier/incomes",
     ]
 
     # Находим рабочий URL
@@ -690,7 +693,17 @@ def save_excel(df: pd.DataFrame, path: str):
 # ─────────────────────────────────────────────────────────────
 
 def main():
-    global API_KEY
+    global API_KEY, OUTPUT_FILE
+
+    parser = argparse.ArgumentParser(description="WB Анализатор потерь v2.1")
+    parser.add_argument("--key", "-k", help="API-ключ WB (категории: Statistics + Analytics)")
+    parser.add_argument("--output", "-o", default=OUTPUT_FILE, help=f"Имя Excel-файла (по умолчанию: {OUTPUT_FILE})")
+    args = parser.parse_args()
+
+    if args.key:
+        API_KEY = args.key.strip()
+    if args.output:
+        OUTPUT_FILE = args.output
 
     print("═" * 62)
     print("  WB Анализатор потерь v2.1 — Cardamón")
